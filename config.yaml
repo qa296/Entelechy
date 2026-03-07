@@ -1,0 +1,31 @@
+# Agent配置
+agent:
+  # API provider: "anthropic" or "openai"
+  provider: "openai"
+  model: "openrouter/free"
+  max_tokens: 8000
+  temperature: 0.7
+
+# 上下文管理
+context:
+  window_size: 128000
+  strategy: "compact"
+  compact_threshold: 0.9
+
+# 记忆配置
+memory:
+  max_search_results: 5000
+
+# 插件配置
+plugins:
+  hot_reload: true
+  auto_activate: true
+
+# 浏览器配置
+browser:
+  headless: true
+
+# 日志
+logging:
+  level: "INFO"
+

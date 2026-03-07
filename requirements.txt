@@ -1,0 +1,27 @@
+# Core
+anthropic>=0.40.0
+openai>=1.0.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Context management
+tiktoken>=0.7.0
+
+# Browser
+playwright>=1.40.0
+
+# File operations
+chardet>=5.0.0
+
+# Plugin system
+importlib-metadata>=6.0
+watchfiles>=0.21.0
+
+# Memory
+python-frontmatter>=1.0.0
+
+# Tools
+aiofiles>=23.0.0
+loguru>=0.7.0
+
+

@@ -5,6 +5,7 @@ browser automation, and autonomous behavior.
 """
 
 import asyncio
+import os
 import signal
 import sys
 from datetime import datetime
@@ -75,6 +76,49 @@ class DigitalLife:
             raise RuntimeError("Message history is not initialized")
         return self.history
 
+    def _validate_agent_config(self, agent_config: dict) -> tuple[str, str, int]:
+        """Validate and normalize agent config values.
+
+        Returns:
+            Tuple of (provider, model, max_tokens).
+        """
+        provider_raw = str(agent_config.get("provider", "anthropic"))
+        provider = provider_raw.strip().lower()
+        if provider not in {"anthropic", "openai"}:
+            raise ValueError(
+                f"Invalid agent.provider: {provider_raw!r}. Use 'anthropic' or 'openai'."
+            )
+
+        model_raw = agent_config.get("model", "claude-sonnet-4-5-20250929")
+        model = str(model_raw).strip()
+        if not model:
+            raise ValueError("Invalid agent.model: model cannot be empty.")
+
+        max_tokens_raw = agent_config.get("max_tokens", 8000)
+        try:
+            max_tokens = int(max_tokens_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid agent.max_tokens: {max_tokens_raw!r}. Must be an integer."
+            ) from exc
+
+        if max_tokens <= 0:
+            raise ValueError(
+                f"Invalid agent.max_tokens: {max_tokens}. Must be greater than 0."
+            )
+
+        if provider == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+            raise ValueError(
+                "ANTHROPIC_API_KEY is required when agent.provider='anthropic'."
+            )
+
+        if provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+            raise ValueError(
+                "OPENAI_API_KEY is required when agent.provider='openai'."
+            )
+
+        return provider, model, max_tokens
+
     async def _initialize(self):
         """Initialize all components."""
         # Ensure directories exist
@@ -100,12 +144,22 @@ class DigitalLife:
 
         # LLM client
         agent_config = self.config.get("agent", {})
-        provider = agent_config.get("provider", "anthropic")
-        self.client = create_client(provider)
+        provider, model, max_tokens = self._validate_agent_config(agent_config)
 
-        # Model config
-        model = agent_config.get("model", "claude-sonnet-4-5-20250929")
-        max_tokens = agent_config.get("max_tokens", 8000)
+        # Log effective model config for easy verification after restart
+        logger.info(
+            "Agent config | provider={} model={} max_tokens={}",
+            provider,
+            model,
+            max_tokens,
+        )
+        if provider == "openai":
+            logger.info(
+                "OpenAI base URL: {}",
+                os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            )
+
+        self.client = create_client(provider)
 
         # Memory
         self.memory_manager = MemoryManager(self.memory_path)

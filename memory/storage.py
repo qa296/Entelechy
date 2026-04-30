@@ -28,7 +28,8 @@ class MemoryStorage:
                 "**记忆诚实：**\n\n"
                 "当你写入记忆时：\n"
                 "- 只记录**真实发生**的事情\n"
-                "\n"
+                "\n",
+                encoding="utf-8",
             )
 
     async def store(self, content: str, category: str | None = None) -> Path:

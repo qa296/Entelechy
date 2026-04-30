@@ -72,10 +72,9 @@ class TodoManager:
         return None
 
     def complete(self, task_id: str) -> bool:
-        for task in self.tasks:
+        for i, task in enumerate(self.tasks):
             if task.id == task_id and task.status == "pending":
-                task.status = "completed"
-                task.completed_at = datetime.now().isoformat()
+                self.tasks.pop(i)
                 return True
         return False
 

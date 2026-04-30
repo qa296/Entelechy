@@ -20,6 +20,7 @@ from agent.context_manager import ContextManager
 from agent.llm_client import BaseLLMClient, create_client
 from agent.message_history import MessageHistory
 from agent.system_prompt import build_system_prompt
+from agent.todo_manager import TodoManager
 from browser.client import BrowserClient
 from memory.manager import MemoryManager
 from plugins.manager import PluginManager
@@ -51,6 +52,7 @@ class DigitalLife:
         self.plugins_path = env.get_plugins_path()
         self.browser_profile_path = env.get_browser_profile_path()
         self.log_path = env.get_log_path()
+        self.data_dir = env.get_data_dir()
 
         # Components (initialized in _initialize)
         self.client: BaseLLMClient | None = None
@@ -60,6 +62,7 @@ class DigitalLife:
         self.context_manager: ContextManager | None = None
         self.agent: AgentLoop | None = None
         self.history: MessageHistory | None = None
+        self.todo_manager: TodoManager | None = None
 
     def _require_memory_manager(self) -> MemoryManager:
         if self.memory_manager is None:
@@ -188,6 +191,12 @@ class DigitalLife:
         # System prompt
         system_prompt = build_system_prompt()
 
+        # TODO manager (before AgentLoop so it can be passed via constructor)
+        self.todo_manager = TodoManager(
+            persist_path=self.data_dir / "todo.json",
+        )
+        await self.todo_manager.load()
+
         # Agent loop
         self.agent = AgentLoop(
             client=self.client,
@@ -196,6 +205,7 @@ class DigitalLife:
             max_tokens=max_tokens,
             context_manager=self.context_manager,
             plugin_manager=self.plugin_manager,
+            todo_manager=self.todo_manager,
         )
 
         # Message history
@@ -254,35 +264,42 @@ class DigitalLife:
 
         history = self._require_history()
         agent = self._require_agent()
+        todo_mgr = self.todo_manager
 
         while self.alive:
             try:
-                # Check for external stimulus (non-blocking, immediate)
                 stimulus = None
                 if not self.stimulus_queue.empty():
                     stimulus = self.stimulus_queue.get_nowait()
 
                 if stimulus:
-                    # External stimulus received
                     history.append({
                         "role": "user",
                         "content": f"[感知] {stimulus['type']}: {stimulus['content']}",
                     })
                 else:
-                    # No stimulus - continue autonomous operation
-                    history.append({
-                        "role": "user",
-                        "content": "继续。",
-                    })
+                    current_task = todo_mgr.get_next() if todo_mgr else None
+                    if current_task:
+                        history.append({
+                            "role": "user",
+                            "content": (
+                                f"[任务] {current_task.description}\n"
+                                f"请完成此任务。"
+                            ),
+                        })
+                    else:
+                        history.append({
+                            "role": "user",
+                            "content": (
+                                "当前没有待办任务。请回顾你的目标和记忆，"
+                                "使用 todo_add 工具规划下一批任务。\n\n"
+                                "规划时注意多样性：学习、探索、记录、实践交替进行。"
+                            ),
+                        })
 
-                # Run agent loop
                 messages = await agent.run(history.get_messages())
                 history.set_messages(messages)
-
-                # Persist history periodically
                 await history.save()
-
-                # Immediately continue to next iteration (no waiting)
 
             except KeyboardInterrupt:
                 logger.info("Keyboard interrupt received")

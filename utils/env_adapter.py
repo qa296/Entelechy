@@ -32,6 +32,9 @@ class EnvAdapter:
     def _should_be_headless(self) -> bool:
         return os.getenv("BROWSER_HEADLESS", "true").lower() == "true"
 
+    def get_data_dir(self) -> Path:
+        return self.data_dir
+
     def get_memory_path(self) -> Path:
         return self.data_dir / "memory"
 

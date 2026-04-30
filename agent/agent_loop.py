@@ -8,6 +8,7 @@ from loguru import logger
 
 from agent.context_manager import ContextManager
 from agent.llm_client import BaseLLMClient
+from agent.todo_manager import TodoManager
 from tools.bash_tool import run_bash
 from tools.file_tools import run_read, run_write, run_edit
 from tools.code_executor import run_create_plugin
@@ -129,6 +130,49 @@ TOOLS = [
             "required": ["action"],
         },
     },
+    {
+        "name": "todo_add",
+        "description": (
+            "Add a new task to the TODO list. Use when planning work or breaking down goals.\n"
+            "You can add multiple tasks at once by calling this tool repeatedly."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Clear, actionable task description",
+                },
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "todo_list",
+        "description": "View all TODO tasks and their status (pending / completed).",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "todo_complete",
+        "description": (
+            "Mark the current task as completed. You MUST call this when you "
+            "have finished the current task. If you don't, the same task will "
+            "be given to you again next turn."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "Brief summary of what was accomplished",
+                },
+            },
+            "required": ["summary"],
+        },
+    },
 ]
 
 
@@ -145,6 +189,7 @@ class AgentLoop:
         workdir: Path | None = None,
         plugin_manager=None,
         core_context_provider=None,
+        todo_manager: TodoManager | None = None,
     ):
         self.client = client
         self.system_prompt = system_prompt
@@ -154,6 +199,7 @@ class AgentLoop:
         self.workdir = workdir
         self.plugin_manager = plugin_manager
         self.core_context_provider = core_context_provider
+        self.todo_manager = todo_manager
 
     async def run(self, messages: list[dict]) -> list[dict]:
         """Run the agent loop until the model stops calling tools.
@@ -266,6 +312,27 @@ class AgentLoop:
                     selector=args.get("selector", ""),
                     text=args.get("text", ""),
                 )
+            elif name == "todo_add":
+                if not self.todo_manager:
+                    return "Error: TODO manager not initialized"
+                task = self.todo_manager.add(args["description"])
+                await self.todo_manager.save()
+                return f"Task added: [{task.id}] {task.description}"
+            elif name == "todo_list":
+                if not self.todo_manager:
+                    return "Error: TODO manager not initialized"
+                return self.todo_manager.format_status()
+            elif name == "todo_complete":
+                if not self.todo_manager:
+                    return "Error: TODO manager not initialized"
+                current = self.todo_manager.get_next()
+                if not current:
+                    return "No pending task to complete."
+                summary = args.get("summary", "")
+                self.todo_manager.complete(current.id)
+                await self.todo_manager.save()
+                logger.info(f"Task completed via todo_complete: [{current.id}] {current.description} — {summary}")
+                return f"Task completed: {summary}"
             else:
                 # Try plugin tools
                 if self.plugin_manager:

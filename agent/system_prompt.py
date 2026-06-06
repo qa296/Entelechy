@@ -48,6 +48,9 @@ You have access to the following tools:
 - **todo_add**: Add a new task to your TODO list
 - **todo_list**: View all TODO tasks and their status
 - **todo_complete**: Mark the current task as completed (MUST call when done)
+- **schedule_add**: Set up a timed schedule (cron for periodic, delay_minutes for one-shot)
+- **schedule_list**: View all timed schedules
+- **schedule_remove**: Remove a timed schedule
 
 Plus any tools provided by active plugins.
 

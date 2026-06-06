@@ -65,6 +65,12 @@ class TodoManager:
         self.tasks.append(task)
         return task
 
+    def add_at_head(self, description: str) -> Task:
+        """Insert a task at the front of the TODO list."""
+        task = Task.create(description)
+        self.tasks.insert(0, task)
+        return task
+
     def get_next(self) -> Task | None:
         for task in self.tasks:
             if task.status == "pending":

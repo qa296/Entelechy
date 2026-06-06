@@ -8,6 +8,7 @@ from loguru import logger
 
 from agent.context_manager import ContextManager
 from agent.llm_client import BaseLLMClient
+from agent.scheduler import SchedulerManager
 from agent.todo_manager import TodoManager
 from tools.bash_tool import run_bash
 from tools.file_tools import run_read, run_write, run_edit
@@ -173,6 +174,57 @@ TOOLS = [
             "required": ["summary"],
         },
     },
+    {
+        "name": "schedule_add",
+        "description": (
+            "Add a timed schedule. When due, the task is injected into the "
+            "TODO list head for immediate attention.\n\n"
+            "Two modes:\n"
+            "  1. Cron: provide 'cron' for periodic tasks (e.g. '0 9 * * *' for daily 9am).\n"
+            "  2. One-shot: provide 'delay_minutes' for a one-time delayed reminder.\n"
+            "Provide exactly one of 'cron' or 'delay_minutes'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Task description for when the schedule triggers",
+                },
+                "cron": {
+                    "type": "string",
+                    "description": "Cron expression (minute-level precision, e.g. '0 9 * * *')",
+                },
+                "delay_minutes": {
+                    "type": "integer",
+                    "description": "Delay in minutes for a one-shot reminder",
+                },
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "schedule_list",
+        "description": "View all scheduled tasks and their status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "schedule_remove",
+        "description": "Remove a scheduled task by its ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "The schedule ID to remove",
+                },
+            },
+            "required": ["id"],
+        },
+    },
 ]
 
 
@@ -190,6 +242,7 @@ class AgentLoop:
         plugin_manager=None,
         core_context_provider=None,
         todo_manager: TodoManager | None = None,
+        scheduler_manager: SchedulerManager | None = None,
     ):
         self.client = client
         self.system_prompt = system_prompt
@@ -200,6 +253,7 @@ class AgentLoop:
         self.plugin_manager = plugin_manager
         self.core_context_provider = core_context_provider
         self.todo_manager = todo_manager
+        self.scheduler_manager = scheduler_manager
 
     async def run(self, messages: list[dict]) -> list[dict]:
         """Run the agent loop until the model stops calling tools.
@@ -332,7 +386,42 @@ class AgentLoop:
                 self.todo_manager.complete(current.id)
                 await self.todo_manager.save()
                 logger.info(f"Task completed via todo_complete: [{current.id}] {current.description} — {summary}")
+
+                # Check and trigger due schedules
+                if self.scheduler_manager:
+                    await self.scheduler_manager.check_and_trigger(self.todo_manager)
+
                 return f"Task completed: {summary}"
+            elif name == "schedule_add":
+                if not self.scheduler_manager:
+                    return "Error: Scheduler manager not initialized"
+                description = args["description"]
+                cron = args.get("cron")
+                delay_minutes = args.get("delay_minutes")
+                try:
+                    schedule = self.scheduler_manager.add(
+                        description, cron=cron, delay_minutes=delay_minutes,
+                    )
+                    await self.scheduler_manager.save()
+                    return (
+                        f"Schedule added: [{schedule.id}] {schedule.description}\n"
+                        f"Type: {schedule.schedule_type}, "
+                        f"{'cron: ' + schedule.cron if schedule.cron else 'run_at: ' + schedule.run_at}"
+                    )
+                except ValueError as e:
+                    return f"Error: {e}"
+            elif name == "schedule_list":
+                if not self.scheduler_manager:
+                    return "Error: Scheduler manager not initialized"
+                return self.scheduler_manager.format_list()
+            elif name == "schedule_remove":
+                if not self.scheduler_manager:
+                    return "Error: Scheduler manager not initialized"
+                removed = self.scheduler_manager.remove(args["id"])
+                if removed:
+                    await self.scheduler_manager.save()
+                    return f"Schedule removed: {args['id']}"
+                return f"Schedule not found: {args['id']}"
             else:
                 # Try plugin tools
                 if self.plugin_manager:

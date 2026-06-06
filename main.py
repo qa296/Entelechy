@@ -19,6 +19,7 @@ from agent.agent_loop import AgentLoop
 from agent.context_manager import ContextManager
 from agent.llm_client import BaseLLMClient, create_client
 from agent.message_history import MessageHistory
+from agent.scheduler import SchedulerManager
 from agent.system_prompt import build_system_prompt
 from agent.todo_manager import TodoManager
 from browser.client import BrowserClient
@@ -63,6 +64,7 @@ class DigitalLife:
         self.agent: AgentLoop | None = None
         self.history: MessageHistory | None = None
         self.todo_manager: TodoManager | None = None
+        self.scheduler_manager: SchedulerManager | None = None
 
     def _require_memory_manager(self) -> MemoryManager:
         if self.memory_manager is None:
@@ -197,6 +199,16 @@ class DigitalLife:
         )
         await self.todo_manager.load()
 
+        # Scheduler
+        self.scheduler_manager = SchedulerManager(
+            persist_path=self.data_dir / "schedules.json",
+        )
+        await self.scheduler_manager.load()
+        config_schedules = self.config.get("schedules", [])
+        if config_schedules:
+            self.scheduler_manager.merge_config(config_schedules)
+            await self.scheduler_manager.save()
+
         # Agent loop
         self.agent = AgentLoop(
             client=self.client,
@@ -206,6 +218,7 @@ class DigitalLife:
             context_manager=self.context_manager,
             plugin_manager=self.plugin_manager,
             todo_manager=self.todo_manager,
+            scheduler_manager=self.scheduler_manager,
         )
 
         # Message history
@@ -288,6 +301,10 @@ class DigitalLife:
                             ),
                         })
                     else:
+                        # 空闲时检查到期的定时任务
+                        if self.scheduler_manager and todo_mgr:
+                            await self.scheduler_manager.check_and_trigger(todo_mgr)
+                            await self.scheduler_manager.save()
                         history.append({
                             "role": "user",
                             "content": (
@@ -362,6 +379,10 @@ class DigitalLife:
         # Save state
         if self.history:
             await self.history.save()
+
+        # Save schedules
+        if self.scheduler_manager:
+            await self.scheduler_manager.save()
 
         # Stop browser
         if self.browser_client:

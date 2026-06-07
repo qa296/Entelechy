@@ -25,6 +25,13 @@ plugins:
 browser:
   headless: true
 
+# 定时任务
+# schedules:
+#   - description: "浏览 Hacker News 了解技术动态"
+#     cron: "0 9 * * *"
+#   - description: "检查 GitHub 通知"
+#     cron: "0 * * * *"
+
 # 日志
 logging:
   level: "INFO"

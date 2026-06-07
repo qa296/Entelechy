@@ -127,7 +127,11 @@ class OpenAIClient(BaseLLMClient):
         # Convert messages
         for msg in messages:
             converted = self._convert_message(msg)
-            if converted:
+            if converted is None:
+                continue
+            elif isinstance(converted, list):
+                all_messages.extend(converted)
+            else:
                 all_messages.append(converted)
 
         response = await self._client.chat.completions.create(
@@ -189,8 +193,15 @@ class OpenAIClient(BaseLLMClient):
             })
         return openai_tools
 
-    def _convert_message(self, msg: dict[str, Any]) -> dict[str, Any] | None:
-        """Convert Anthropic-style message to OpenAI format."""
+    def _convert_message(
+        self, msg: dict[str, Any],
+    ) -> dict[str, Any] | list[dict[str, Any]] | None:
+        """Convert Anthropic-style message to OpenAI format.
+
+        Returns:
+            A single dict, a list of dicts (for multiple tool results),
+            or None if the message should be skipped.
+        """
         role = msg.get("role")
         content = msg.get("content")
 
@@ -198,7 +209,6 @@ class OpenAIClient(BaseLLMClient):
             if isinstance(content, str):
                 return {"role": "user", "content": content}
             elif isinstance(content, list):
-                # Handle tool results
                 texts = []
                 tool_results = []
                 for block in content:
@@ -209,12 +219,7 @@ class OpenAIClient(BaseLLMClient):
                             texts.append(block.get("text", ""))
 
                 if tool_results:
-                    # Convert tool results to OpenAI format
-                    result_msg: dict[str, Any] = {"role": "tool", "content": ""}
-                    for tr in tool_results:
-                        result_msg["tool_call_id"] = tr.get("tool_use_id", "")
-                        result_msg["content"] = tr.get("content", "")
-                    return result_msg
+                    return self._convert_tool_results(tool_results)
                 elif texts:
                     return {"role": "user", "content": "\n".join(texts)}
 
@@ -234,6 +239,8 @@ class OpenAIClient(BaseLLMClient):
                 result: dict[str, Any] = {"role": "assistant"}
                 if texts:
                     result["content"] = "\n".join(texts)
+                elif tool_uses:
+                    result["content"] = None
                 if tool_uses:
                     import json
                     result["tool_calls"] = [
@@ -250,6 +257,25 @@ class OpenAIClient(BaseLLMClient):
                 return result
 
         return None
+
+    def _convert_tool_results(
+        self, tool_results: list[dict[str, Any]],
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Convert tool result blocks to OpenAI role:tool messages.
+
+        OpenAI requires each tool call result as a separate ``role: "tool"``
+        message. A single result returns a dict; multiple results return a list.
+        """
+        messages = []
+        for tr in tool_results:
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tr.get("tool_use_id", ""),
+                "content": tr.get("content", ""),
+            })
+        if len(messages) == 1:
+            return messages[0]
+        return messages
 
 
 def create_client(provider: str = "anthropic", base_url: str | None = None) -> BaseLLMClient:

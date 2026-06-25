@@ -285,10 +285,6 @@ class AgentLoop:
                 )
             except Exception as e:
                 logger.error(f"API error: {e}")
-                messages.append({
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": f"[API Error: {e}]"}],
-                })
                 break
 
             # Extract text and tool calls

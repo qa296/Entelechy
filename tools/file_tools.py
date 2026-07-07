@@ -14,7 +14,7 @@ async def run_read(
 
     Args:
         path: Relative or absolute file path.
-        workdir: Base directory for path safety.
+        workdir: Base directory for resolving relative paths.
         limit: Maximum number of lines to read.
 
     Returns:
@@ -22,7 +22,7 @@ async def run_read(
     """
     try:
         if workdir:
-            file_path = safe_path(workdir, path)
+            file_path = (workdir / path).resolve()
         else:
             file_path = Path(path).resolve()
 
@@ -57,14 +57,14 @@ async def run_write(path: str, content: str, workdir: Path | None = None) -> str
     Args:
         path: Relative or absolute file path.
         content: Content to write.
-        workdir: Base directory for path safety.
+        workdir: Base directory for resolving relative paths.
 
     Returns:
         Success message or error.
     """
     try:
         if workdir:
-            file_path = safe_path(workdir, path)
+            file_path = (workdir / path).resolve()
         else:
             file_path = Path(path).resolve()
 
@@ -89,14 +89,14 @@ async def run_edit(
         path: Relative or absolute file path.
         old_text: Exact text to find.
         new_text: Text to replace with.
-        workdir: Base directory for path safety.
+        workdir: Base directory for resolving relative paths.
 
     Returns:
         Success message or error.
     """
     try:
         if workdir:
-            file_path = safe_path(workdir, path)
+            file_path = (workdir / path).resolve()
         else:
             file_path = Path(path).resolve()
 

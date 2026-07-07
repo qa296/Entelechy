@@ -216,6 +216,7 @@ class DigitalLife:
             model=model,
             max_tokens=max_tokens,
             context_manager=self.context_manager,
+            workdir=self.data_dir,
             plugin_manager=self.plugin_manager,
             todo_manager=self.todo_manager,
             scheduler_manager=self.scheduler_manager,

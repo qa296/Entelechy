@@ -282,38 +282,42 @@ class DigitalLife:
 
         while self.alive:
             try:
-                stimulus = None
-                if not self.stimulus_queue.empty():
-                    stimulus = self.stimulus_queue.get_nowait()
+                msgs = history.get_messages()
+                interrupted = bool(msgs) and msgs[-1].get("role") == "user"
 
-                if stimulus:
-                    history.append({
-                        "role": "user",
-                        "content": f"[感知] {stimulus['type']}: {stimulus['content']}",
-                    })
-                else:
-                    current_task = todo_mgr.get_next() if todo_mgr else None
-                    if current_task:
+                if not interrupted:
+                    stimulus = None
+                    if not self.stimulus_queue.empty():
+                        stimulus = self.stimulus_queue.get_nowait()
+
+                    if stimulus:
                         history.append({
                             "role": "user",
-                            "content": (
-                                f"[任务] {current_task.description}\n"
-                                f"请完成此任务。"
-                            ),
+                            "content": f"[感知] {stimulus['type']}: {stimulus['content']}",
                         })
                     else:
-                        # 空闲时检查到期的定时任务
-                        if self.scheduler_manager and todo_mgr:
-                            await self.scheduler_manager.check_and_trigger(todo_mgr)
-                            await self.scheduler_manager.save()
-                        history.append({
-                            "role": "user",
-                            "content": (
-                                "当前没有待办任务。请回顾你的目标和记忆，"
-                                "使用 todo_add 工具规划下一批任务。\n\n"
-                                "规划时注意多样性：学习、探索、记录、实践交替进行。"
-                            ),
-                        })
+                        current_task = todo_mgr.get_next() if todo_mgr else None
+                        if current_task:
+                            history.append({
+                                "role": "user",
+                                "content": (
+                                    f"[任务] {current_task.description}\n"
+                                    f"请完成此任务。"
+                                ),
+                            })
+                        else:
+                            # 空闲时检查到期的定时任务
+                            if self.scheduler_manager and todo_mgr:
+                                await self.scheduler_manager.check_and_trigger(todo_mgr)
+                                await self.scheduler_manager.save()
+                            history.append({
+                                "role": "user",
+                                "content": (
+                                    "当前没有待办任务。请回顾你的目标和记忆，"
+                                    "使用 todo_add 工具规划下一批任务。\n\n"
+                                    "规划时注意多样性：学习、探索、记录、实践交替进行。"
+                                ),
+                            })
 
                 messages = await agent.run(history.get_messages())
                 history.set_messages(messages)

@@ -57,8 +57,17 @@ class ContextManager:
         if len(messages) <= 2:
             return messages
 
-        # Find the split point — keep at least the last 30% of messages intact
-        keep_count = max(2, len(messages) * 3 // 10)
+        # Find the split point — keep at least the last 30% of messages intact.
+        # The boundary must not orphan a tool_result: if the kept half opens
+        # with a user message holding tool_result blocks, those results
+        # reference tool_use blocks now sitting in the summarized half (which
+        # gets replaced by prose), and the provider rejects the history with a
+        # 400 ("Upstream request failed"). Grow the kept half to absorb the
+        # pairing assistant tool_use so the pair stays intact and no context
+        # is lost.
+        keep_count = self._safe_keep_count(
+            messages, max(2, len(messages) * 3 // 10)
+        )
         to_summarize = messages[:-keep_count]
         to_keep = messages[-keep_count:]
 
@@ -175,3 +184,40 @@ class ContextManager:
                 f"Messages covered roles: "
                 f"{', '.join(set(m.get('role', '?') for m in messages))}"
             )
+
+    def _safe_keep_count(self, messages: list[dict], desired: int) -> int:
+        """Grow the keep count so the kept slice doesn't open on an orphaned
+        tool_result.
+
+        After compaction the summarized half is replaced by a single user
+        message of prose. If the kept half opens with a user message carrying
+        tool_result blocks, those results reference tool_use blocks that no
+        longer exist in the history (they're in the summarized half). The
+        provider rejects this with a 400. Scan backward from the desired
+        boundary and include the pairing assistant tool_use so the pair stays
+        together.
+        """
+        n = len(messages)
+        if n == 0:
+            return desired
+        keep = min(desired, n)
+        while keep < n and self._opens_with_tool_result(messages, keep):
+            keep += 1
+        return keep
+
+    @staticmethod
+    def _opens_with_tool_result(messages: list[dict], keep: int) -> bool:
+        """True if the slice messages[-keep:] opens on a user message whose
+        content is tool_result blocks (i.e. an orphaned tool_result pair)."""
+        if keep <= 0 or keep > len(messages):
+            return False
+        first = messages[-keep]
+        if first.get("role") != "user":
+            return False
+        content = first.get("content")
+        if not isinstance(content, list) or not content:
+            return False
+        return any(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in content
+        )

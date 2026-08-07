@@ -23,7 +23,7 @@ class MemoryStorage:
             self.core_path.write_text(
                 "# 核心记忆（最高优先级）\n\n"
                 "这个文件存放最重要的信息，每次LLM调用时都会注入。\n\n"
-                "## 核心原则\n\n"
+                "## 核心原则\n\n",
                 encoding="utf-8",
             )
 

@@ -33,10 +33,12 @@ class LLMResponse:
         content_blocks: list[dict[str, Any]],
         stop_reason: str,
         tool_calls: list[ToolCall] | None = None,
+        reasoning_content: str | None = None,
     ):
         self.content_blocks = content_blocks
         self.stop_reason = stop_reason
         self.tool_calls = tool_calls or []
+        self.reasoning_content = reasoning_content
 
 
 class ToolCall:
@@ -146,6 +148,7 @@ class OpenAIClient(BaseLLMClient):
         # Extract content
         content_blocks = []
         tool_calls = []
+        reasoning_content = self._extract_reasoning_content(choice.message)
 
         if choice.message.content:
             content_blocks.append({"type": "text", "text": choice.message.content})
@@ -177,7 +180,28 @@ class OpenAIClient(BaseLLMClient):
             content_blocks=content_blocks,
             stop_reason=stop_reason,
             tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
         )
+
+    @staticmethod
+    def _extract_reasoning_content(message: Any) -> str | None:
+        """Extract provider-specific chain-of-thought field from a response message.
+
+        Thinking-mode providers (e.g. DeepSeek-style reasoning models) return a
+        ``reasoning_content`` field alongside the visible ``content``. It must be
+        echoed back verbatim on subsequent API calls, so it is propagated to
+        ``LLMResponse`` instead of being dropped. The field may surface as a
+        direct attribute or, on openai SDK v1.x, inside ``model_extra``.
+        """
+        rc = getattr(message, "reasoning_content", None)
+        if isinstance(rc, str) and rc:
+            return rc
+        extra = getattr(message, "model_extra", None)
+        if isinstance(extra, dict):
+            rc = extra.get("reasoning_content")
+            if isinstance(rc, str) and rc:
+                return rc
+        return None
 
     def _convert_tools(self, anthropic_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Convert Anthropic-style tools to OpenAI format."""
@@ -254,6 +278,9 @@ class OpenAIClient(BaseLLMClient):
                         }
                         for tu in tool_uses
                     ]
+                reasoning = msg.get("reasoning_content")
+                if isinstance(reasoning, str) and reasoning:
+                    result["reasoning_content"] = reasoning
                 return result
 
         return None

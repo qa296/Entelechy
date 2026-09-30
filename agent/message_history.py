@@ -51,6 +51,10 @@ class MessageHistory:
                 ]
             else:
                 s_msg["content"] = str(content)
+
+            reasoning = msg.get("reasoning_content")
+            if isinstance(reasoning, str) and reasoning:
+                s_msg["reasoning_content"] = reasoning
             serializable.append(s_msg)
 
         async with aiofiles.open(self.persist_path, "w", encoding="utf-8") as f:

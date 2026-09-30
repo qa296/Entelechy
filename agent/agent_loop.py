@@ -296,10 +296,7 @@ class AgentLoop:
 
             # If no tool calls, conversation turn is done
             if response.stop_reason != "tool_use":
-                messages.append({
-                    "role": "assistant",
-                    "content": response.content_blocks,
-                })
+                messages.append(_assistant_message_from_response(response))
                 break
 
             # Execute tools and collect results
@@ -315,10 +312,7 @@ class AgentLoop:
                 })
 
             # Append assistant message and tool results
-            messages.append({
-                "role": "assistant",
-                "content": response.content_blocks,
-            })
+            messages.append(_assistant_message_from_response(response))
             messages.append({
                 "role": "user",
                 "content": results,
@@ -428,6 +422,19 @@ class AgentLoop:
         except Exception as e:
             logger.error(f"Tool execution error ({name}): {e}")
             return f"Error executing {name}: {e}"
+
+
+def _assistant_message_from_response(response) -> dict:
+    """Build the assistant history message, preserving reasoning_content so that
+    thinking-mode providers can round-trip it on the next API call."""
+    msg = {
+        "role": "assistant",
+        "content": response.content_blocks,
+    }
+    reasoning = getattr(response, "reasoning_content", None)
+    if isinstance(reasoning, str) and reasoning:
+        msg["reasoning_content"] = reasoning
+    return msg
 
 
 def _preview_args(args: dict, max_len: int = 100) -> str:

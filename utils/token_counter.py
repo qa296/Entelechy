@@ -47,4 +47,8 @@ def estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
                     # Anthropic SDK content block objects
                     total += estimate_tokens(str(block))
             total += 4
+
+        reasoning = msg.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            total += estimate_tokens(reasoning) + 3
     return total

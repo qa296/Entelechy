@@ -15,7 +15,7 @@ import yaml
 from dotenv import load_dotenv
 from loguru import logger
 
-from agent.agent_loop import AgentLoop
+from agent.agent_loop import AgentLoop, build_tools
 from agent.context_manager import ContextManager
 from agent.llm_client import BaseLLMClient, create_client
 from agent.message_history import MessageHistory
@@ -190,8 +190,20 @@ class DigitalLife:
             compact_threshold=ctx_config.get("compact_threshold", 0.9),
         )
 
+        # Tool availability (single source of truth for prompt + API request)
+        tools = build_tools(
+            bash_enabled=bool(self.config.get("bash", {}).get("enabled", True)),
+            browser_enabled=bool(self.config.get("browser", {}).get("enabled", True)),
+        )
+        disabled = [t for t in ("bash", "browser") if t not in {x["name"] for x in tools}]
+        logger.info(
+            "Tools enabled: {}{}",
+            len(tools),
+            f" (disabled: {', '.join(disabled)})" if disabled else "",
+        )
+
         # System prompt
-        system_prompt = build_system_prompt()
+        system_prompt = build_system_prompt(tools=tools)
 
         # TODO manager (before AgentLoop so it can be passed via constructor)
         self.todo_manager = TodoManager(
@@ -220,6 +232,7 @@ class DigitalLife:
             plugin_manager=self.plugin_manager,
             todo_manager=self.todo_manager,
             scheduler_manager=self.scheduler_manager,
+            tools=tools,
         )
 
         # Message history
@@ -409,16 +422,23 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+    task = loop.create_task(life.run_forever())
+
     def signal_handler():
         life.alive = False
+        # The API client retries forever with growing backoff, so the loop may
+        # be parked in a long sleep where `alive` is never re-checked. Cancelling
+        # the task is what actually unblocks shutdown; CancelledError is a
+        # BaseException and passes straight through the retry handler.
+        task.cancel()
 
     if sys.platform != "win32":
         loop.add_signal_handler(signal.SIGTERM, signal_handler)
         loop.add_signal_handler(signal.SIGINT, signal_handler)
 
     try:
-        loop.run_until_complete(life.run_forever())
-    except KeyboardInterrupt:
+        loop.run_until_complete(task)
+    except (KeyboardInterrupt, asyncio.CancelledError):
         life.alive = False
         loop.run_until_complete(life._shutdown())
     finally:

@@ -5,11 +5,17 @@ from pathlib import Path
 from loguru import logger
 
 
-def build_system_prompt(personality_path: Path | str = "PERSONALITY.md") -> str:
+def build_system_prompt(
+    personality_path: Path | str = "PERSONALITY.md",
+    tools: list[dict] | None = None,
+) -> str:
     """Build the system prompt from the personality file and runtime context.
 
     Args:
         personality_path: Path to the PERSONALITY.md file.
+        tools: Effective tool definitions (see agent_loop.build_tools). The tool
+            listing is rendered from these rather than hand-written, so the
+            prompt can never advertise a tool the API request omits.
 
     Returns:
         The complete system prompt string.
@@ -22,6 +28,16 @@ def build_system_prompt(personality_path: Path | str = "PERSONALITY.md") -> str:
     else:
         logger.warning(f"Personality file not found: {personality_path}")
         personality = "You are a helpful AI assistant."
+
+    if tools is None:
+        from agent.agent_loop import TOOLS
+
+        tools = TOOLS
+
+    tool_lines = "\n".join(
+        f"- **{t['name']}**: {' '.join(t['description'].split())}"
+        for t in tools
+    )
 
     # Runtime context
     from datetime import datetime
@@ -36,21 +52,7 @@ def build_system_prompt(personality_path: Path | str = "PERSONALITY.md") -> str:
 ## Available Tools
 
 You have access to the following tools:
-- **bash**: Execute shell commands (ls, find, grep, git, python, etc.)
-- **read_file**: Read file contents
-- **write_file**: Write/create files
-- **edit_file**: Replace exact text in files
-- **remember**: Store important info to long-term memory (critical/normal priority)
-- **recall**: Search and retrieve from long-term memory
-- **journal**: Write to today's daily journal
-- **create_plugin**: Create new plugin capabilities with Python code
-- **browser**: Web automation (navigate, click, type, screenshot, extract)
-- **todo_add**: Add a new task to your TODO list
-- **todo_list**: View all TODO tasks and their status
-- **todo_complete**: Mark the current task as completed (MUST call when done)
-- **schedule_add**: Set up a timed schedule (cron for periodic, delay_minutes for one-shot)
-- **schedule_list**: View all timed schedules
-- **schedule_remove**: Remove a timed schedule
+{tool_lines}
 
 Plus any tools provided by active plugins.
 
@@ -72,11 +74,8 @@ You operate on a task-driven loop. The system gives you tasks one at a time.
 ## Important Guidelines
 
 - Do **NOT** repeat the same action consecutively. If something didn't work, try a different approach.
-- Use **remember** with importance="critical" for truly important information
-- Use **journal** to record daily activities and reflections
 - Use **recall** before making decisions to check if you've learned something relevant
-- Use **browser** for web interactions; sessions persist across calls
-- Use **create_plugin** when you identify repeatable patterns worth automating
+- Only use the tools listed above; anything else does not exist for you.
 """
 
     return personality + "\n\n" + runtime_context

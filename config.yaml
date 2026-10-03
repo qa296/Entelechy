@@ -21,8 +21,14 @@ plugins:
   hot_reload: true
   auto_activate: true
 
+# Bash工具开关（关闭后不向模型提供bash工具）
+bash:
+  enabled: true
+
 # 浏览器配置
+# enabled: 关闭后不向模型提供browser工具（Docker镜像默认未安装浏览器时保持关闭）
 browser:
+  enabled: true
   headless: true
 
 # 定时任务

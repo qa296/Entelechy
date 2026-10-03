@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from typing import Any, cast
@@ -23,6 +24,30 @@ class BaseLLMClient(ABC):
     ) -> LLMResponse:
         """Create a message and return standardized response."""
         pass
+
+    async def _retry(self, call):
+        """Await an API call forever, backing off exponentially on failure.
+
+        This is a never-ending 24/7 runtime: a transient network blip or a
+        provider rate limit must not end the agent's turn. Every failure is
+        logged with its attempt number and the next delay, then retried after
+        ``2s * 1.5**n`` seconds — unbounded, so repeated outages space out on
+        their own instead of hammering the provider.
+
+        ``CancelledError`` inherits from ``BaseException`` and is therefore not
+        caught here, which is what lets ``task.cancel()`` break out of a long
+        sleep during graceful shutdown.
+        """
+        delay = 2.0
+        n = 0
+        while True:
+            try:
+                return await call()
+            except Exception as e:
+                n += 1
+                logger.warning(f"LLM request failed (#{n}): {e} | retry in {delay:.1f}s")
+                await asyncio.sleep(delay)
+                delay *= 1.5
 
 
 class LLMResponse:
@@ -66,13 +91,13 @@ class AnthropicClient(BaseLLMClient):
         max_tokens: int,
     ) -> LLMResponse:
         """Create message using Anthropic API."""
-        response = await self._client.messages.create(
+        response = await self._retry(lambda: self._client.messages.create(
             model=model,
             system=system_prompt,
             messages=cast(Any, messages),
             tools=cast(Any, tools),
             max_tokens=max_tokens,
-        )
+        ))
 
         # Extract content blocks
         content_blocks = []
@@ -136,12 +161,12 @@ class OpenAIClient(BaseLLMClient):
             else:
                 all_messages.append(converted)
 
-        response = await self._client.chat.completions.create(
+        response = await self._retry(lambda: self._client.chat.completions.create(
             model=model,
             messages=cast(Any, all_messages),
             tools=cast(Any, openai_tools if openai_tools else None),
             max_tokens=max_tokens,
-        )
+        ))
 
         choice = response.choices[0]
 

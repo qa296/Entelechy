@@ -2,7 +2,10 @@ version: "3.8"
 
 services:
   entelechy:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_BROWSER: "${INSTALL_BROWSER:-0}"
     container_name: entelechy
     env_file:
       - .env

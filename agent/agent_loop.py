@@ -228,6 +228,21 @@ TOOLS = [
 ]
 
 
+def build_tools(bash_enabled: bool = True, browser_enabled: bool = True) -> list[dict]:
+    """Build the effective tool list, excluding tools disabled by config.
+
+    This is the single place tool availability is decided: the same result is
+    handed to both the system prompt and the API request, so the prompt can
+    never advertise a tool the model is not actually offered.
+    """
+    disabled: set[str] = set()
+    if not bash_enabled:
+        disabled.add("bash")
+    if not browser_enabled:
+        disabled.add("browser")
+    return [t for t in TOOLS if t["name"] not in disabled]
+
+
 class AgentLoop:
     """Core agent loop: LLM call → tool execution → result append → continue."""
 
@@ -243,10 +258,12 @@ class AgentLoop:
         core_context_provider=None,
         todo_manager: TodoManager | None = None,
         scheduler_manager: SchedulerManager | None = None,
+        tools: list[dict] | None = None,
     ):
         self.client = client
         self.system_prompt = system_prompt
         self.model = model
+        self.tools = build_tools() if tools is None else list(tools)
         self.max_tokens = max_tokens
         self.context_manager = context_manager
         self.workdir = workdir
@@ -269,8 +286,8 @@ class AgentLoop:
             if self.context_manager:
                 messages = await self.context_manager.maybe_compact(messages)
 
-            # Gather all tools (built-in + plugin)
-            all_tools = list(TOOLS)
+            # Gather all tools (enabled built-in + plugin)
+            all_tools = list(self.tools)
             if self.plugin_manager:
                 all_tools.extend(self.plugin_manager.get_all_tools())
 

@@ -7,9 +7,6 @@ python-dotenv>=1.0.0
 # Context management
 tiktoken>=0.7.0
 
-# Browser
-playwright>=1.40.0
-
 # File operations
 chardet>=5.0.0
 
